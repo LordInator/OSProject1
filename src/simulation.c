@@ -117,16 +117,6 @@ int getPIDFromWorkload(Workload *workload, int index)
     return workload->processesInfo[index]->pcb->pid;
 }
 
-int getIndexFromPID(Workload *workload, int pid)
-{
-    for (int i = 0; i < workload->nbProcesses; i++){
-        if(workload->processesInfo[i]->pcb->pid == pid){
-            return i;
-        }
-    }
-    return 66;
-}
-
 int getProcessStartTime(Workload *workload, int pid)
 {
     for (int i = 0; i < workload->nbProcesses; i++)
@@ -441,12 +431,7 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
     qsort(workload->processesInfo, workload->nbProcesses, sizeof(ProcessSimulationInfo *), compareProcessStartTime);
 
     int time = 0;
-    /*static const char *strings[] = {"RR", "FCFS", "SJF", "PRIORITY"};
-    printf("%s \n", strings[algorithms[0]->type]);
-    printf("Process start time : %d \n", workload->processesInfo[2]->startTime);
-    if(workload->processesInfo[0]->nextEvent->nextEvent != NULL)
-        printf("next event time : %d \n", workload->processesInfo[0]->nextEvent->nextEvent->time);
-    printf("%d \n", getPIDFromWorkload(workload, 0));*/
+    int switchinDelay = 1;
     
     while(time<=50){
         /*Handle Events*/
@@ -468,91 +453,49 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
                     else
                         workload->processesInfo[i]->nextEvent = NULL;
                 }
-            }else if(getProcessAdvancementTime(workload, cpu->cores[0]->process->pid) >= getProcessDuration(workload, cpu->cores[0]->process->pid)){
-                workload->processesInfo[getIndexFromPID(workload, cpu->cores[0]->process->pid)]->pcb->state = TERMINATED;
-                cpu->cores[0]->state = IDLE;
-                addProcessEventToGraph(graph, cpu->cores[0]->process->pid, time, TERMINATED, NO_CORE);
+            }else if(cpu->cores[0]->state == NOTIDLE){
+                if(getProcessAdvancementTime(workload, cpu->cores[0]->process->pid) >= getProcessDuration(workload, cpu->cores[0]->process->pid)){    
+                    workload->processesInfo[getProcessIndex(workload, cpu->cores[0]->process->pid)]->pcb->state = TERMINATED;
+                    cpu->cores[0]->state = IDLE;
+                    switchinDelay = 1;
+                }
             }
         }
 
         /*Assign processes to ressources*/
         switch(algorithms[0]->type){
             case FCFS:
-                FCFSff(computer, time, graph, stats);
+                FCFSff(computer, switchinDelay);
                 break;
             default:
                 break;
         }
 
-        /*Advance time of process in core and of simultion*/
-        workload->processesInfo[getIndexFromPID(workload, cpu->cores[0]->process->pid)]->advancementTime++;
-        time++;
-    }
-
-    /* Main loop of the simulation.*/
-    /*while(time <= 50){
-        for (int i = 0; i < workload->nbProcesses; i++){
+        /*Handle Graph*/
+        for(int i=0; i<workload->nbProcesses; i++){
             switch(workload->processesInfo[i]->pcb->state){
                 case READY: 
-                    if(workload->processesInfo[i]->nextEvent->time <= time && runningProcess(workload) == 0 && workload->processesInfo[i]->nextEvent->type == CPU_BURST){
-                        workload->processesInfo[i]->startTime = time;
-                        workload->processesInfo[i]->pcb->state = RUNNING;
-                        workload->processesInfo[i]->advancementTime = 1;
-                        if(workload->processesInfo[i]->nextEvent != NULL){
-                            ProcessEvent *tmp = workload->processesInfo[i]->nextEvent->nextEvent;
-                            workload->processesInfo[i]->nextEvent = tmp;
-                        }
-                        addProcessEventToGraph(graph, i+1, time, workload->processesInfo[i]->pcb->state, 0);
-                    }else{
-                        getProcessStats(stats, i+1)->waitingTime++;
-                        if(time == 0){
-                            addProcessEventToGraph(graph, i+1, time, workload->processesInfo[i]->pcb->state, NO_CORE);
-                            AddProcessReady(scheduler, workload->processesInfo[i]->pcb);
-                        }
-                    }
+                    addProcessEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, READY, NO_CORE);
                     break;
                 case RUNNING:
-                    if(workload->processesInfo[i]->advancementTime < workload->processesInfo[i]->processDuration){
-                        if(workload->processesInfo[i]->nextEvent != NULL){
-                            if(workload->processesInfo[i]->nextEvent->type == IO_BURST && workload->processesInfo[i]->nextEvent->time == time){
-                                workload->processesInfo[i]->pcb->state = WAITING;
-                                ProcessEvent *tmp = workload->processesInfo[i]->nextEvent->nextEvent;
-                                workload->processesInfo[i]->nextEvent = tmp;
-                                getProcessStats(stats, i+1)->nbContextSwitches++;
-                                addProcessEventToGraph(graph, i+1, time, workload->processesInfo[i]->pcb->state, 0);
-                                break;
-                            }
-                        }
-                        workload->processesInfo[i]->advancementTime++;
-                        getProcessStats(stats, i+1)->cpuTime++;
-                    }else{
-                        workload->processesInfo[i]->pcb->state = TERMINATED;
-                        addProcessEventToGraph(graph, i+1, time, TERMINATED, 0);
-                        getProcessStats(stats, i+1)->cpuTime++;
-                        getProcessStats(stats, i+1)->finishTime = time;
-                        getProcessStats(stats, i+1)->turnaroundTime = time;
-                        getProcessStats(stats, i+1)->meanResponseTime = getProcessStats(stats, i+1)->waitingTime/(getProcessStats(stats, i+1)->nbContextSwitches + 1);
-                    }
+                    addProcessEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, RUNNING, 0);
                     break;
                 case WAITING:
-                    if(workload->processesInfo[i]->nextEvent != NULL){
-                        if(workload->processesInfo[i]->nextEvent->type == CPU_BURST && workload->processesInfo[i]->nextEvent->time == time){
-                            workload->processesInfo[i]->pcb->state = READY;
-                            addProcessEventToGraph(graph, i+1, time, workload->processesInfo[i]->pcb->state, 0);
-                            //ProcessEvent *tmp = workload->processesInfo[i]->nextEvent->nextEvent;
-                            //free(workload->processesInfo[i]->nextEvent);
-                            //workload->processesInfo[i]->nextEvent = tmp;
-                            break;
-                        }
-                    }
-                    getProcessStats(stats, i+1)->waitingTime++;
+                    addProcessEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, WAITING, NO_CORE);
                     break;
-                default:
+                case TERMINATED:
+                    addProcessEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, TERMINATED, NO_CORE);
                     break;
             }
         }
+
+        /*Advance time of process in core and of simultion*/
+        if(switchinDelay == 1)
+            switchinDelay = 0;
+        if(cpu->cores[0]->state == NOTIDLE)
+            workload->processesInfo[getProcessIndex(workload, cpu->cores[0]->process->pid)]->advancementTime++;
         time++;
-    }*/
+    }
 
     freeComputer(computer);
 }

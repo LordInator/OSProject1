@@ -28,6 +28,6 @@ void freeScheduler(Scheduler *scheduler);
 
 
 /* -------------------------- scheduling functions ------------------------- */
-void FCFSff(Computer *computer, int time, ProcessGraph *graph, AllStats *stats);
+void FCFSff(Computer *computer, int switchindelay);
 
 #endif // schedulingLogic_h

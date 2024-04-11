@@ -42,6 +42,7 @@ bool alreadyReadyQueue(Scheduler *scheduler, PCB* process){
 }
 
 void AddReadyQueue(Scheduler *schedule, PCB* process){
+    process->state = READY;
     schedule->readyQueue[schedule->IndexReady] = process;
     schedule->IndexReady++;
 }
@@ -92,19 +93,15 @@ void freeScheduler(Scheduler *scheduler)
 
 /* -------------------------- scheduling functions ------------------------- */
 
-void FCFSff(Computer *computer, int time, ProcessGraph *graph, AllStats *stats){
-    //char *strings[] = {"READY", "RUNNING", "WAITING", "TERMINATED"};
+void FCFSff(Computer *computer, int switchindelay){
+    /*Core 0 idle && atleast 1 process in readyQueue*/
     if(computer->cpu->cores[0]->state == IDLE && computer->scheduler->IndexReady > 0){
-        computer->cpu->cores[0]->process = computer->scheduler->readyQueue[0];
-        computer->cpu->cores[0]->process->state = RUNNING;
-        computer->cpu->cores[0]->state = NOTIDLE;
-        printf("%d \n", computer->scheduler->IndexReady);
-        reduceReadyQueue(computer->scheduler);
-        printf("%d \n", computer->scheduler->IndexReady);
-
-        addProcessEventToGraph(graph, computer->cpu->cores[0]->process->pid, time, RUNNING, 0);
-        for(int i=0; i<computer->scheduler->IndexReady; i++){
-            addProcessEventToGraph(graph, computer->scheduler->readyQueue[i]->pid, time, READY, NO_CORE);
+        /*Skip for switch-in delay*/
+        if(switchindelay==0){
+            computer->cpu->cores[0]->process = computer->scheduler->readyQueue[0];
+            computer->cpu->cores[0]->process->state = RUNNING;
+            computer->cpu->cores[0]->state = NOTIDLE;
+            reduceReadyQueue(computer->scheduler);
         }
     }
 }
