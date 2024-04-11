@@ -432,6 +432,8 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
 
     int time = 0;
     int switchinDelay = 1;
+    int switchoutDelay = 0;
+    int PIDonDisk = 0;
     
     while(time<=50){
         /*Handle Events*/
@@ -447,7 +449,7 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
                             workload->processesInfo[i]->nextEvent = NULL;
                     }
                 }else if(workload->processesInfo[i]->nextEvent->type == IO_BURST && workload->processesInfo[i]->nextEvent->time == time){
-                    IOInterrupt(cpu->cores[0], disk);
+                    IOInterrupt(computer);
                     if(workload->processesInfo[i]->nextEvent->nextEvent != NULL)
                         workload->processesInfo[i]->nextEvent = workload->processesInfo[i]->nextEvent->nextEvent;
                     else
@@ -465,7 +467,7 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
         /*Assign processes to ressources*/
         switch(algorithms[0]->type){
             case FCFS:
-                FCFSff(computer, switchinDelay);
+                FCFSff(computer, switchinDelay, switchoutDelay);
                 break;
             default:
                 break;
@@ -476,12 +478,19 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
             switch(workload->processesInfo[i]->pcb->state){
                 case READY: 
                     addProcessEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, READY, NO_CORE);
+                    if(workload->processesInfo[i]->pcb->pid == PIDonDisk){
+                        printf("timer : %d \n", time);
+                        addDiskEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, DISK_IDLE);
+                        PIDonDisk = 0;
+                    }
                     break;
                 case RUNNING:
                     addProcessEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, RUNNING, 0);
                     break;
                 case WAITING:
                     addProcessEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, WAITING, NO_CORE);
+                    addDiskEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, DISK_RUNNING);
+                    PIDonDisk = workload->processesInfo[i]->pcb->pid;
                     break;
                 case TERMINATED:
                     addProcessEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, TERMINATED, NO_CORE);
@@ -490,8 +499,10 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
         }
 
         /*Advance time of process in core and of simultion*/
-        if(switchinDelay == 1)
-            switchinDelay = 0;
+        if(switchinDelay == 0 && switchoutDelay != 0)
+            switchoutDelay--;
+        if(switchinDelay != 0)
+            switchinDelay--;
         if(cpu->cores[0]->state == NOTIDLE)
             workload->processesInfo[getProcessIndex(workload, cpu->cores[0]->process->pid)]->advancementTime++;
         time++;

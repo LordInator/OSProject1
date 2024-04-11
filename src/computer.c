@@ -96,9 +96,10 @@ void freeDisk(Disk *disk)
     free(disk);
 }
 
-void IOInterrupt(Core *core, Disk *disk){
-    if(disk->isIdle == true){
-        disk->processIO = core->process;
-        //call schedulingLogic to select process running while this one waits
+void IOInterrupt(Computer *computer){
+    if(computer->disk->isIdle == true){
+        computer->disk->processIO = computer->cpu->cores[0]->process;
+        computer->disk->isIdle = false;
+        AddWaitQueue(computer->scheduler, computer->disk->processIO); //also modify process state
     }
 }

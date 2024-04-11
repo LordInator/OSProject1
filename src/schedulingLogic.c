@@ -32,6 +32,12 @@ struct Scheduler_t
 
 /* -------------------------- getters and setters -------------------------- */
 
+void AddWaitQueue(Scheduler *scheduler, PCB *process){
+    process->state = WAITING;
+    scheduler->waitQueue[scheduler->IndexWaiting] = process;
+    scheduler->IndexWaiting++;
+}
+
 bool alreadyReadyQueue(Scheduler *scheduler, PCB* process){
     for(int i = 0; i < scheduler->IndexReady; i++){
         if(scheduler->readyQueue[i]->pid == process->pid){
@@ -93,15 +99,17 @@ void freeScheduler(Scheduler *scheduler)
 
 /* -------------------------- scheduling functions ------------------------- */
 
-void FCFSff(Computer *computer, int switchindelay){
+void FCFSff(Computer *computer, int switchindelay, int switchoutdelay){
     /*Core 0 idle && atleast 1 process in readyQueue*/
     if(computer->cpu->cores[0]->state == IDLE && computer->scheduler->IndexReady > 0){
         /*Skip for switch-in delay*/
-        if(switchindelay==0){
+        if(switchindelay == 0 && switchoutdelay == 0){
             computer->cpu->cores[0]->process = computer->scheduler->readyQueue[0];
             computer->cpu->cores[0]->process->state = RUNNING;
             computer->cpu->cores[0]->state = NOTIDLE;
             reduceReadyQueue(computer->scheduler);
+            if(computer->disk->isIdle == false)
+                computer->disk->isIdle = true;
         }
     }
 }
