@@ -31,5 +31,7 @@ void freeScheduler(Scheduler *scheduler);
 
 /* -------------------------- scheduling functions ------------------------- */
 void FCFSff(Computer *computer, int switchindelay, int switchoutdelay);
+void PRIORITYff(Computer *computer, int switchindelay, int switchoutdelay);
+void SJFff(Computer *computer, int switchindelay, int switchoutdelay, Workload* workload);
 
 #endif // schedulingLogic_h

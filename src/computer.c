@@ -100,6 +100,8 @@ void IOInterrupt(Computer *computer){
     if(computer->disk->isIdle == true){
         computer->disk->processIO = computer->cpu->cores[0]->process;
         computer->disk->isIdle = false;
+        //printf("diskIDLE: %d \n", computer->disk->isIdle);
+        computer->cpu->cores[0]->state = IDLE;
         AddWaitQueue(computer->scheduler, computer->disk->processIO); //also modify process state
     }
 }

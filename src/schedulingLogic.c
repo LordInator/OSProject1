@@ -11,6 +11,7 @@
 #include "schedulingLogic.h"
 #include "utils.h"
 #include "schedulingAlgorithms.h"
+#include "simulation.h"
 
 #define NB_WAIT_QUEUES 1
 
@@ -29,6 +30,25 @@ struct Scheduler_t
 };
 
 /* ---------------------------- static functions --------------------------- */
+
+static int compareProcessPriority(const void *a, const void *b)
+{
+    const PCB *infoA = *(const PCB **)a;
+    const PCB *infoB = *(const PCB **)b;
+
+    if (infoA->priority < infoB->priority)
+    {
+        return -1;
+    }
+    else if (infoA->priority > infoB->priority)
+    {
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+}
 
 /* -------------------------- getters and setters -------------------------- */
 
@@ -54,7 +74,7 @@ void AddReadyQueue(Scheduler *schedule, PCB* process){
 }
 
 void reduceReadyQueue(Scheduler *scheduler){
-    for(int i=0; i<scheduler->IndexReady; i++){
+    for(int i=0; (i+1)<scheduler->IndexReady; i++){
         scheduler->readyQueue[i] = scheduler->readyQueue[i+1];
     }
     scheduler->IndexReady--;
@@ -104,12 +124,54 @@ void FCFSff(Computer *computer, int switchindelay, int switchoutdelay){
     if(computer->cpu->cores[0]->state == IDLE && computer->scheduler->IndexReady > 0){
         /*Skip for switch-in delay*/
         if(switchindelay == 0 && switchoutdelay == 0){
+            //printf("comp : %d \n", computer->scheduler->readyQueue[0]->pid);
             computer->cpu->cores[0]->process = computer->scheduler->readyQueue[0];
             computer->cpu->cores[0]->process->state = RUNNING;
             computer->cpu->cores[0]->state = NOTIDLE;
             reduceReadyQueue(computer->scheduler);
-            if(computer->disk->isIdle == false)
-                computer->disk->isIdle = true;
+        }
+    }
+}
+
+void PRIORITYff(Computer *computer, int switchindelay, int switchoutdelay){
+    qsort(computer->scheduler->readyQueue, computer->scheduler->IndexReady, sizeof(PCB *), compareProcessPriority);
+    /*for(int i=0; i<computer->scheduler->IndexReady;i++){
+        printf("eur : %d \n", computer->scheduler->readyQueue[i]->priority);
+    }*/
+
+    /*Core 0 idle && atleast 1 process in readyQueue*/
+    if(computer->cpu->cores[0]->state == IDLE && computer->scheduler->IndexReady > 0){
+        /*Skip for switch-in delay*/
+        if(switchindelay == 0 && switchoutdelay == 0){
+            computer->cpu->cores[0]->process = computer->scheduler->readyQueue[0];
+            computer->cpu->cores[0]->process->state = RUNNING;
+            computer->cpu->cores[0]->state = NOTIDLE;
+            reduceReadyQueue(computer->scheduler);
+        }
+    }
+}
+
+void SJFff(Computer *computer, int switchindelay, int switchoutdelay, Workload* workload){
+    int indexLowest = 0;
+    int LowestScore = 999;
+    for(int i=0; i<computer->scheduler->IndexReady; i++){
+        printf("getPID: %d \n", computer->scheduler->readyQueue[i]->pid);
+        if(LowestScore > getProcessCurEventTimeLeft(workload, computer->scheduler->readyQueue[i]->pid) && getProcessCurEventTimeLeft(workload, computer->scheduler->readyQueue[i]->pid) > 0){
+            LowestScore = getProcessCurEventTimeLeft(workload, computer->scheduler->readyQueue[i]->pid);
+            indexLowest = i;
+        }
+    }
+
+    printf("lowest score : %d \n", getProcessDuration(workload, computer->scheduler->readyQueue[indexLowest]->pid) - getProcessAdvancementTime(workload, computer->scheduler->readyQueue[indexLowest]->pid));
+    /*Core 0 idle && atleast 1 process in readyQueue*/
+    if(computer->cpu->cores[0]->state == IDLE && computer->scheduler->IndexReady > 0){
+        /*Skip for switch-in delay*/
+        if(switchindelay == 0 && switchoutdelay == 0){
+            printf("hi\n");
+            computer->cpu->cores[0]->process = computer->scheduler->readyQueue[indexLowest];
+            computer->cpu->cores[0]->process->state = RUNNING;
+            computer->cpu->cores[0]->state = NOTIDLE;
+            reduceReadyQueue(computer->scheduler); //CHANGE THIS
         }
     }
 }
