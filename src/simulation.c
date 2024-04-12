@@ -436,8 +436,9 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
     int switchoutDelay = 0;
     int PIDonDisk = 0;
     int interruptHandler = 0;
+    int timesliceLeft = algorithms[0]->RRSliceLimit;
     
-    while(time<=50){
+    while(time<=75){
         /*Handle Events*/
         for (int i = 0; i < workload->nbProcesses; i++){
             /*Check for nextEvent (CPU_BURST OR IO_BURST)*/
@@ -454,6 +455,7 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
                     }
                 }else if(workload->processesInfo[i]->nextEvent->type == IO_BURST && workload->processesInfo[i]->nextEvent->time == time){
                     IOInterrupt(computer);
+                    timesliceLeft = algorithms[0]->RRSliceLimit;
                     if(workload->processesInfo[i]->nextEvent->nextEvent != NULL)
                         workload->processesInfo[i]->nextEvent = workload->processesInfo[i]->nextEvent->nextEvent;
                     else
@@ -464,6 +466,17 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
                     workload->processesInfo[getProcessIndex(workload, cpu->cores[0]->process->pid)]->pcb->state = TERMINATED;
                     cpu->cores[0]->state = IDLE;
                     switchinDelay = 1;
+                    switchoutDelay = 0;
+                    timesliceLeft = algorithms[0]->RRSliceLimit;
+                }
+                if(timesliceLeft == 0 && cpu->cores[0]->process->pid == workload->processesInfo[i]->pcb->pid){
+                    if(lastProcess(scheduler) == false){
+                        AddReadyQueue(scheduler, workload->processesInfo[i]->pcb);
+                        cpu->cores[0]->state = IDLE;
+                        switchinDelay = 1;
+                        switchoutDelay = 2;
+                        timesliceLeft = algorithms[0]->RRSliceLimit;
+                    }
                 }
             }
         }
@@ -478,6 +491,9 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
                 break;
             case SJF:
                 SJFff(computer, switchinDelay, switchoutDelay, workload);
+                break;
+            case RR:
+                RRff(computer, switchinDelay, switchoutDelay);
                 break;
             default:
                 break;
@@ -508,10 +524,10 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
         }
 
         /*Advance time of process in core and of simultion*/
-        if(switchinDelay == 0 && switchoutDelay != 0)
-            switchoutDelay--;
-        if(switchinDelay != 0)
+        if(switchinDelay != 0 && switchoutDelay == 0)
             switchinDelay--;
+        if(switchoutDelay != 0)
+            switchoutDelay--;
         if(cpu->cores[0]->state == NOTIDLE){
             workload->processesInfo[getProcessIndex(workload, cpu->cores[0]->process->pid)]->advancementTime++;
         }
@@ -519,6 +535,9 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
             workload->processesInfo[getProcessIndex(workload, disk->processIO->pid)]->advancementTime++;
         }
         time++;
+        if(algorithms[0]->type == RR && cpu->cores[0]->state == NOTIDLE){
+            timesliceLeft--;
+        }
     }
 
     freeComputer(computer);

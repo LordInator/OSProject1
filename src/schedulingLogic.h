@@ -17,7 +17,7 @@ typedef struct Computer_t Computer;
 typedef struct Scheduler_t Scheduler;
 
 /* -------------------------- getters and setters -------------------------- */
-
+bool lastProcess(Scheduler *scheduler);
 void AddWaitQueue(Scheduler *scheduler, PCB *process);
 bool alreadyReadyQueue(Scheduler *scheduler, PCB* process);
 void AddReadyQueue(Scheduler *schedule, PCB* process);
@@ -28,10 +28,10 @@ int getWaitQueueCount(void);
 Scheduler *initScheduler(SchedulingAlgorithm **readyQueueAlgorithms, int readyQueueCount, int maxQueue);
 void freeScheduler(Scheduler *scheduler);
 
-
 /* -------------------------- scheduling functions ------------------------- */
 void FCFSff(Computer *computer, int switchindelay, int switchoutdelay);
 void PRIORITYff(Computer *computer, int switchindelay, int switchoutdelay);
 void SJFff(Computer *computer, int switchindelay, int switchoutdelay, Workload* workload);
+void RRff(Computer *computer, int switchindelay, int switchoutdelay);
 
 #endif // schedulingLogic_h
