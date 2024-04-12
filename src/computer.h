@@ -68,6 +68,6 @@ void freeCPU(CPU *cpu);
 Disk *initDisk(void);
 void freeDisk(Disk *disk);
 
-void IOInterrupt(Computer *computer);
+void IOInterrupt(Computer *computer, int indexCore);
 
 #endif // computer_h

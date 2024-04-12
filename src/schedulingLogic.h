@@ -17,6 +17,7 @@ typedef struct Computer_t Computer;
 typedef struct Scheduler_t Scheduler;
 
 /* -------------------------- getters and setters -------------------------- */
+int CoreWithPID(Computer *computer, int pid);
 bool lastProcess(Scheduler *scheduler);
 void AddWaitQueue(Scheduler *scheduler, PCB *process);
 bool alreadyReadyQueue(Scheduler *scheduler, PCB* process);

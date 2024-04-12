@@ -438,7 +438,7 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
     int interruptHandler = 0;
     int timesliceLeft = algorithms[0]->RRSliceLimit;
     
-    while(time<=75){
+    while(time<=50){
         /*Handle Events*/
         for (int i = 0; i < workload->nbProcesses; i++){
             /*Check for nextEvent (CPU_BURST OR IO_BURST)*/
@@ -454,28 +454,35 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
                             workload->processesInfo[i]->nextEvent = NULL;
                     }
                 }else if(workload->processesInfo[i]->nextEvent->type == IO_BURST && workload->processesInfo[i]->nextEvent->time == time){
-                    IOInterrupt(computer);
+                    IOInterrupt(computer, CoreWithPID(computer, workload->processesInfo[i]->pcb->pid));
                     timesliceLeft = algorithms[0]->RRSliceLimit;
                     if(workload->processesInfo[i]->nextEvent->nextEvent != NULL)
                         workload->processesInfo[i]->nextEvent = workload->processesInfo[i]->nextEvent->nextEvent;
                     else
                         workload->processesInfo[i]->nextEvent = NULL;
                 }
-            }else if(cpu->cores[0]->state == NOTIDLE){
-                if(getProcessAdvancementTime(workload, cpu->cores[0]->process->pid) >= getProcessDuration(workload, cpu->cores[0]->process->pid)){    
-                    workload->processesInfo[getProcessIndex(workload, cpu->cores[0]->process->pid)]->pcb->state = TERMINATED;
-                    cpu->cores[0]->state = IDLE;
-                    switchinDelay = 1;
-                    switchoutDelay = 0;
-                    timesliceLeft = algorithms[0]->RRSliceLimit;
-                }
-                if(timesliceLeft == 0 && cpu->cores[0]->process->pid == workload->processesInfo[i]->pcb->pid){
-                    if(lastProcess(scheduler) == false){
-                        AddReadyQueue(scheduler, workload->processesInfo[i]->pcb);
-                        cpu->cores[0]->state = IDLE;
-                        switchinDelay = 1;
-                        switchoutDelay = 2;
-                        timesliceLeft = algorithms[0]->RRSliceLimit;
+            }else{ 
+                for(int j=0; j<cpu->coreCount; j++){
+                    /*Check that any core is running*/
+                    if(cpu->cores[j]->state == NOTIDLE){
+                        /*CPU on core advacned enough -> process is terminated*/
+                        if(getProcessAdvancementTime(workload, cpu->cores[j]->process->pid) >= getProcessDuration(workload, cpu->cores[j]->process->pid)){    
+                            workload->processesInfo[getProcessIndex(workload, cpu->cores[j]->process->pid)]->pcb->state = TERMINATED;
+                            cpu->cores[j]->state = IDLE;
+                            switchinDelay = 1;
+                            switchoutDelay = 0;
+                            timesliceLeft = algorithms[0]->RRSliceLimit;
+                        }
+                        /*CPU on core has spend enough time on core -> switchout (RR slice time)*/
+                        if(timesliceLeft == 0 && cpu->cores[j]->process->pid == workload->processesInfo[i]->pcb->pid){
+                            if(lastProcess(scheduler) == false){
+                                AddReadyQueue(scheduler, workload->processesInfo[i]->pcb);
+                                cpu->cores[j]->state = IDLE;
+                                switchinDelay = 1;
+                                switchoutDelay = 2;
+                                timesliceLeft = algorithms[0]->RRSliceLimit;
+                            }
+                        }
                     }
                 }
             }
@@ -510,7 +517,7 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
                     }
                     break;
                 case RUNNING:
-                    addProcessEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, RUNNING, 0);
+                    addProcessEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, RUNNING, CoreWithPID(computer, workload->processesInfo[i]->pcb->pid));
                     break;
                 case WAITING:
                     addProcessEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, WAITING, NO_CORE);
@@ -528,8 +535,10 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
             switchinDelay--;
         if(switchoutDelay != 0)
             switchoutDelay--;
-        if(cpu->cores[0]->state == NOTIDLE){
-            workload->processesInfo[getProcessIndex(workload, cpu->cores[0]->process->pid)]->advancementTime++;
+        for(int i=0; i<cpu->coreCount; i++){
+            if(cpu->cores[i]->state == NOTIDLE){
+                workload->processesInfo[getProcessIndex(workload, cpu->cores[i]->process->pid)]->advancementTime++;
+            }
         }
         if(disk->isIdle == false){
             workload->processesInfo[getProcessIndex(workload, disk->processIO->pid)]->advancementTime++;
