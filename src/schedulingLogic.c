@@ -235,10 +235,6 @@ void SJFff(Computer *computer, int switchindelay[], int switchoutdelay[], Worklo
         AddReadyQueue(computer->scheduler, computer->disk->processIO);
     }
 
-    for(int i = 0; i < computer->scheduler->IndexReady; i++){
-        printf("ReadyQueue : %d \n", computer->scheduler->readyQueue[i]->pid);
-    }
-
     /*IO event // Scheduler put a process on disk if idle*/
     if(InterruptPID != 0){
         if(computer->disk->isIdle == true){
