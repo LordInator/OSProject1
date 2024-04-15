@@ -96,11 +96,8 @@ void freeDisk(Disk *disk)
     free(disk);
 }
 
-void IOInterrupt(Computer *computer, int indexCore){
-    if(computer->disk->isIdle == true){
-        computer->disk->processIO = computer->cpu->cores[indexCore]->process;
-        computer->disk->isIdle = false;
-        computer->cpu->cores[indexCore]->state = IDLE;
-        AddWaitQueue(computer->scheduler, computer->disk->processIO); //also modify process state
-    }
+void InterruptHandler(Computer *computer){
+    computer->disk->isIdle = true;
+    if(computer->cpu->cores[0]->state == NOTIDLE)
+        AddFirstReadyQueue(computer->scheduler, computer->cpu->cores[0]->process);
 }

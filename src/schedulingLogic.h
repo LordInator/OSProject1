@@ -23,6 +23,7 @@ void AddWaitQueue(Scheduler *scheduler, PCB *process);
 bool alreadyReadyQueue(Scheduler *scheduler, PCB* process);
 void AddReadyQueue(Scheduler *schedule, PCB* process);
 int getWaitQueueCount(void);
+void AddFirstReadyQueue(Scheduler *scheduler, PCB* process);
 
 /* -------------------------- init/free functions -------------------------- */
 
@@ -30,9 +31,9 @@ Scheduler *initScheduler(SchedulingAlgorithm **readyQueueAlgorithms, int readyQu
 void freeScheduler(Scheduler *scheduler);
 
 /* -------------------------- scheduling functions ------------------------- */
-void FCFSff(Computer *computer, int switchindelay, int switchoutdelay);
-void PRIORITYff(Computer *computer, int switchindelay, int switchoutdelay);
-void SJFff(Computer *computer, int switchindelay, int switchoutdelay, Workload* workload);
-void RRff(Computer *computer, int switchindelay, int switchoutdelay);
+void FCFSff(Computer *computer, int switchindelay[], int switchoutdelay[], int InterruptPID, bool InterruptHandlerFinished);
+void PRIORITYff(Computer *computer, int switchindelay[], int switchoutdelay[], int InterruptPID, bool InterruptHandlerFinished);
+void SJFff(Computer *computer, int switchindelay[], int switchoutdelay[], Workload* workload, int InterruptPID, bool InterruptHandlerFinished);
+void RRff(Computer *computer, int switchindelay[], int switchoutdelay[], int InterruptPID, bool InterruptHandlerFinished);
 
 #endif // schedulingLogic_h

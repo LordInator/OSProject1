@@ -83,6 +83,22 @@ bool alreadyReadyQueue(Scheduler *scheduler, PCB* process){
     return false;
 }
 
+void AddFirstReadyQueue(Scheduler *scheduler, PCB* process){
+    for(int i = 0; i < scheduler->IndexReady; i++){
+        printf("ReadyQueue : %d \n", scheduler->readyQueue[i]->pid);
+    }
+    process->state = READY;
+    for(int i = scheduler->IndexReady; i > 0; i--){
+        scheduler->readyQueue[i] = scheduler->readyQueue[i-1];
+    }
+    scheduler->readyQueue[0] = process;
+    scheduler->IndexReady++;
+
+    for(int i = 0; i < scheduler->IndexReady; i++){
+        printf("ReadyQueue : %d \n", scheduler->readyQueue[i]->pid);
+    }
+}
+
 void AddReadyQueue(Scheduler *schedule, PCB* process){
     process->state = READY;
     schedule->readyQueue[schedule->IndexReady] = process;
@@ -142,12 +158,32 @@ void freeScheduler(Scheduler *scheduler)
 
 /* -------------------------- scheduling functions ------------------------- */
 
-void FCFSff(Computer *computer, int switchindelay, int switchoutdelay){
+void FCFSff(Computer *computer, int switchindelay[], int switchoutdelay[], int InterruptPID, bool InterruptHandlerFinished){
+    /*for(int i = 0; i < computer->scheduler->IndexReady; i++){
+        printf("ReadyQueue : %d \n", computer->scheduler->readyQueue[i]->pid);
+    }*/
+
+    /*InterruptHandler finished => Scheduler put process that was on disk back in readyQueue*/
+    if(InterruptHandlerFinished == true){
+        AddReadyQueue(computer->scheduler, computer->disk->processIO);
+    }
+
+    /*IO event // Scheduler put a process on disk if idle*/
+    if(InterruptPID != 0){
+        if(computer->disk->isIdle == true){
+            int indexCore = CoreWithPID(computer, InterruptPID);
+            computer->disk->processIO = computer->cpu->cores[indexCore]->process;
+            computer->disk->isIdle = false;
+            computer->cpu->cores[indexCore]->state = IDLE;
+            AddWaitQueue(computer->scheduler, computer->disk->processIO); //also modify process state
+        }
+    }
+
     for(int i=0; i<computer->cpu->coreCount; i++){
     /*Core 0 idle && atleast 1 process in readyQueue*/
         if(computer->cpu->cores[i]->state == IDLE && computer->scheduler->IndexReady > 0){
             /*Skip for switch-in delay*/
-            if(switchindelay == 0 && switchoutdelay == 0){
+            if(switchindelay[i] == 0 && switchoutdelay[i] == 0){
                 //printf("comp : %d \n", computer->scheduler->readyQueue[0]->pid);
                 computer->cpu->cores[i]->process = computer->scheduler->readyQueue[0];
                 computer->cpu->cores[i]->process->state = RUNNING;
@@ -158,17 +194,31 @@ void FCFSff(Computer *computer, int switchindelay, int switchoutdelay){
     }
 }
 
-void PRIORITYff(Computer *computer, int switchindelay, int switchoutdelay){
+void PRIORITYff(Computer *computer, int switchindelay[], int switchoutdelay[], int InterruptPID, bool InterruptHandlerFinished){
+
+    /*InterruptHandler finished => Scheduler put process that was on disk back in readyQueue*/
+    if(InterruptHandlerFinished == true){
+        AddReadyQueue(computer->scheduler, computer->disk->processIO);
+    }
+
     qsort(computer->scheduler->readyQueue, computer->scheduler->IndexReady, sizeof(PCB *), compareProcessPriority);
-    /*for(int i=0; i<computer->scheduler->IndexReady;i++){
-        printf("eur : %d \n", computer->scheduler->readyQueue[i]->priority);
-    }*/
+
+    /*IO event => Scheduler put a process on disk if idle*/
+    if(InterruptPID != 0){
+        if(computer->disk->isIdle == true){
+            int indexCore = CoreWithPID(computer, InterruptPID);
+            computer->disk->processIO = computer->cpu->cores[indexCore]->process;
+            computer->disk->isIdle = false;
+            computer->cpu->cores[indexCore]->state = IDLE;
+            AddWaitQueue(computer->scheduler, computer->disk->processIO); //also modify process state
+        }
+    }
 
     for(int i=0; i<computer->cpu->coreCount; i++){
     /*Core 0 idle && atleast 1 process in readyQueue*/
         if(computer->cpu->cores[i]->state == IDLE && computer->scheduler->IndexReady > 0){
             /*Skip for switch-in delay*/
-            if(switchindelay == 0 && switchoutdelay == 0){
+            if(switchindelay[i] == 0 && switchoutdelay[i] == 0){
                 computer->cpu->cores[i]->process = computer->scheduler->readyQueue[0];
                 computer->cpu->cores[i]->process->state = RUNNING;
                 computer->cpu->cores[i]->state = NOTIDLE;
@@ -178,7 +228,27 @@ void PRIORITYff(Computer *computer, int switchindelay, int switchoutdelay){
     }
 }
 
-void SJFff(Computer *computer, int switchindelay, int switchoutdelay, Workload* workload){
+void SJFff(Computer *computer, int switchindelay[], int switchoutdelay[], Workload* workload, int InterruptPID, bool InterruptHandlerFinished){
+
+    /*InterruptHandler finished => Scheduler put process that was on disk back in readyQueue*/
+    if(InterruptHandlerFinished == true){
+        AddReadyQueue(computer->scheduler, computer->disk->processIO);
+    }
+
+    for(int i = 0; i < computer->scheduler->IndexReady; i++){
+        printf("ReadyQueue : %d \n", computer->scheduler->readyQueue[i]->pid);
+    }
+
+    /*IO event // Scheduler put a process on disk if idle*/
+    if(InterruptPID != 0){
+        if(computer->disk->isIdle == true){
+            int indexCore = CoreWithPID(computer, InterruptPID);
+            computer->disk->processIO = computer->cpu->cores[indexCore]->process;
+            computer->disk->isIdle = false;
+            computer->cpu->cores[indexCore]->state = IDLE;
+            AddWaitQueue(computer->scheduler, computer->disk->processIO); //also modify process state
+        }
+    }
 
     for(int i=0; i<computer->cpu->coreCount; i++){
         int indexLowest = 0;
@@ -193,7 +263,7 @@ void SJFff(Computer *computer, int switchindelay, int switchoutdelay, Workload* 
         /*Core 0 idle && atleast 1 process in readyQueue*/
         if(computer->cpu->cores[i]->state == IDLE && computer->scheduler->IndexReady > 0){
             /*Skip for switch-in delay*/
-            if(switchindelay == 0 && switchoutdelay == 0){
+            if(switchindelay[i] == 0 && switchoutdelay[i] == 0){
                 computer->cpu->cores[i]->process = computer->scheduler->readyQueue[indexLowest];
                 computer->cpu->cores[i]->process->state = RUNNING;
                 computer->cpu->cores[i]->state = NOTIDLE;
@@ -203,11 +273,28 @@ void SJFff(Computer *computer, int switchindelay, int switchoutdelay, Workload* 
     }
 }
 
-void RRff(Computer *computer, int switchindelay, int switchoutdelay){
+void RRff(Computer *computer, int switchindelay[], int switchoutdelay[], int InterruptPID, bool InterruptHandlerFinished){
+
+    /*InterruptHandler finished => Scheduler put process that was on disk back in readyQueue*/
+    if(InterruptHandlerFinished == true){
+        AddReadyQueue(computer->scheduler, computer->disk->processIO);
+    }
+
+    /*IO event // Scheduler put a process on disk if idle*/
+    if(InterruptPID != 0){
+        if(computer->disk->isIdle == true){
+            int indexCore = CoreWithPID(computer, InterruptPID);
+            computer->disk->processIO = computer->cpu->cores[indexCore]->process;
+            computer->disk->isIdle = false;
+            computer->cpu->cores[indexCore]->state = IDLE;
+            AddWaitQueue(computer->scheduler, computer->disk->processIO); //also modify process state
+        }
+    }
+
     for(int i=0; i<computer->cpu->coreCount; i++){
         if(computer->cpu->cores[i]->state == IDLE && computer->scheduler->IndexReady > 0){
             /*Skip for switch-in delay*/
-            if(switchindelay == 0 && switchoutdelay == 0){
+            if(switchindelay[i] == 0 && switchoutdelay[i] == 0){
                 //printf("comp : %d \n", computer->scheduler->readyQueue[0]->pid);
                 computer->cpu->cores[i]->process = computer->scheduler->readyQueue[0];
                 computer->cpu->cores[i]->process->state = RUNNING;

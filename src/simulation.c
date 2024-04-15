@@ -432,35 +432,56 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
     qsort(workload->processesInfo, workload->nbProcesses, sizeof(ProcessSimulationInfo *), compareProcessStartTime);
 
     int time = 0;
-    int switchinDelay = 1;
-    int switchoutDelay = 0;
+    int switchinDelay[cpu->coreCount];
+    int switchoutDelay[cpu->coreCount];
     int PIDonDisk = 0;
-    int interruptHandler = 0;
-    int timesliceLeft = algorithms[0]->RRSliceLimit;
+    int timesliceLeft[cpu->coreCount];
+    int InterruptPID = 0;
+    bool IOFinished = false;
+    bool InterruptHandlerFinished = false;
+
+    for(int i=0; i<cpu->coreCount; i++){
+        timesliceLeft[i] = algorithms[0]->RRSliceLimit;
+        switchinDelay[i] = 1;
+        switchoutDelay[i] = 0;
+    }
     
     while(time<=50){
-        /*Handle Events*/
+        /*Handle Events // Events Happens*/
         for (int i = 0; i < workload->nbProcesses; i++){
+
             /*Check for nextEvent (CPU_BURST OR IO_BURST)*/
             if(workload->processesInfo[i]->nextEvent != NULL){ 
+                /*NextEvent == CPU*/
                 if(workload->processesInfo[i]->nextEvent->type == CPU_BURST && workload->processesInfo[i]->nextEvent->time == time){
+
+                    /*IO Interrupt is finished, InterruptHandler will be put on Core 0 & Disk will be set to idle*/
+                    if(disk->isIdle == false){
+                        IOFinished = true;
+                        continue;
+                    }
+
+                    /*CPU event just arrived*/
                     if(alreadyReadyQueue(scheduler, workload->processesInfo[i]->pcb) == false){
                         AddReadyQueue(scheduler, workload->processesInfo[i]->pcb);
-                        if(disk->isIdle == false) //if process was waiting on disk -> reset disk to idle & add to readyQueue
-                            disk->isIdle = true;
                         if(workload->processesInfo[i]->nextEvent->nextEvent != NULL)
                             workload->processesInfo[i]->nextEvent = workload->processesInfo[i]->nextEvent->nextEvent;
                         else
                             workload->processesInfo[i]->nextEvent = NULL;
                     }
+
+                /*NextEvent == IO*/
                 }else if(workload->processesInfo[i]->nextEvent->type == IO_BURST && workload->processesInfo[i]->nextEvent->time == time){
-                    IOInterrupt(computer, CoreWithPID(computer, workload->processesInfo[i]->pcb->pid));
-                    timesliceLeft = algorithms[0]->RRSliceLimit;
+                    InterruptPID = workload->processesInfo[i]->pcb->pid;
+                    switchoutDelay[CoreWithPID(computer, InterruptPID)] = 2;
+                    switchinDelay[CoreWithPID(computer, InterruptPID)] = 1;
                     if(workload->processesInfo[i]->nextEvent->nextEvent != NULL)
                         workload->processesInfo[i]->nextEvent = workload->processesInfo[i]->nextEvent->nextEvent;
                     else
                         workload->processesInfo[i]->nextEvent = NULL;
                 }
+
+            /*If there is no nextEvent -> Check for Termination or RRSlice*/
             }else{ 
                 for(int j=0; j<cpu->coreCount; j++){
                     /*Check that any core is running*/
@@ -469,18 +490,17 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
                         if(getProcessAdvancementTime(workload, cpu->cores[j]->process->pid) >= getProcessDuration(workload, cpu->cores[j]->process->pid)){    
                             workload->processesInfo[getProcessIndex(workload, cpu->cores[j]->process->pid)]->pcb->state = TERMINATED;
                             cpu->cores[j]->state = IDLE;
-                            switchinDelay = 1;
-                            switchoutDelay = 0;
-                            timesliceLeft = algorithms[0]->RRSliceLimit;
+                            switchinDelay[j] = 1;
+                            timesliceLeft[j] = algorithms[0]->RRSliceLimit;
                         }
                         /*CPU on core has spend enough time on core -> switchout (RR slice time)*/
-                        if(timesliceLeft == 0 && cpu->cores[j]->process->pid == workload->processesInfo[i]->pcb->pid){
+                        if(timesliceLeft[j] == 0 && cpu->cores[j]->process->pid == workload->processesInfo[i]->pcb->pid){
                             if(lastProcess(scheduler) == false){
                                 AddReadyQueue(scheduler, workload->processesInfo[i]->pcb);
                                 cpu->cores[j]->state = IDLE;
-                                switchinDelay = 1;
-                                switchoutDelay = 2;
-                                timesliceLeft = algorithms[0]->RRSliceLimit;
+                                switchinDelay[j] = 1;
+                                switchoutDelay[j] = 2;
+                                timesliceLeft[j] = algorithms[0]->RRSliceLimit;
                             }
                         }
                     }
@@ -488,41 +508,49 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
             }
         }
 
-        /*Assign processes to ressources*/
-        switch(algorithms[0]->type){
-            case FCFS:
-                FCFSff(computer, switchinDelay, switchoutDelay);
-                break;
-            case PRIORITY:
-                PRIORITYff(computer, switchinDelay, switchoutDelay);
-                break;
-            case SJF:
-                SJFff(computer, switchinDelay, switchoutDelay, workload);
-                break;
-            case RR:
-                RRff(computer, switchinDelay, switchoutDelay);
-                break;
-            default:
-                break;
+        printf("time %d \n", time);
+        if(IOFinished == true)
+            InterruptHandler(computer);
+        else{
+            /*Assign processes to ressources*/
+            switch(algorithms[0]->type){
+                case FCFS:
+                    FCFSff(computer, switchinDelay, switchoutDelay, InterruptPID, InterruptHandlerFinished);
+                    break;
+                case PRIORITY:
+                    PRIORITYff(computer, switchinDelay, switchoutDelay, InterruptPID, InterruptHandlerFinished);
+                    break;
+                case SJF:
+                    SJFff(computer, switchinDelay, switchoutDelay, workload, InterruptPID, InterruptHandlerFinished);
+                    break;
+                case RR:
+                    RRff(computer, switchinDelay, switchoutDelay, InterruptPID, InterruptHandlerFinished);
+                    break;
+                default:
+                    break;
+            }
         }
 
-        /*Handle Graph*/
+        /*Handle Graphs*/
         for(int i=0; i<workload->nbProcesses; i++){
             switch(workload->processesInfo[i]->pcb->state){
                 case READY: 
                     addProcessEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, READY, NO_CORE);
-                    if(workload->processesInfo[i]->pcb->pid == PIDonDisk){
-                        addDiskEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, DISK_IDLE);
-                        PIDonDisk = 0;
-                    }
+                    //if(workload->processesInfo[i]->pcb->pid == PIDonDisk){
+                    //    addDiskEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, DISK_IDLE);
+                    //    PIDonDisk = 0;
+                    //}
                     break;
                 case RUNNING:
                     addProcessEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, RUNNING, CoreWithPID(computer, workload->processesInfo[i]->pcb->pid));
                     break;
                 case WAITING:
                     addProcessEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, WAITING, NO_CORE);
-                    addDiskEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, DISK_RUNNING);
-                    PIDonDisk = workload->processesInfo[i]->pcb->pid;
+                    if(disk->isIdle == false)
+                        addDiskEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, DISK_RUNNING);
+                    else 
+                        addDiskEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, DISK_IDLE);
+                    //PIDonDisk = workload->processesInfo[i]->pcb->pid;
                     break;
                 case TERMINATED:
                     addProcessEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, TERMINATED, NO_CORE);
@@ -530,23 +558,44 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
             }
         }
 
+
         /*Advance time of process in core and of simultion*/
-        if(switchinDelay != 0 && switchoutDelay == 0)
-            switchinDelay--;
-        if(switchoutDelay != 0)
-            switchoutDelay--;
+        /*Context Switch Delays*/
+        if(IOFinished == false){
+            for(int k=0; k<cpu->coreCount; k++){
+                if(switchinDelay[k] != 0 && switchoutDelay[k] == 0)
+                    switchinDelay[k]--;
+                if(switchoutDelay[k] != 0)
+                    switchoutDelay[k]--;
+            }
+        }
+
+        /*AdvancementTime of running processes*/
         for(int i=0; i<cpu->coreCount; i++){
             if(cpu->cores[i]->state == NOTIDLE){
                 workload->processesInfo[getProcessIndex(workload, cpu->cores[i]->process->pid)]->advancementTime++;
             }
         }
+
+        /*Also AdvancementTime of process on Disk*/
         if(disk->isIdle == false){
             workload->processesInfo[getProcessIndex(workload, disk->processIO->pid)]->advancementTime++;
         }
-        time++;
-        if(algorithms[0]->type == RR && cpu->cores[0]->state == NOTIDLE){
-            timesliceLeft--;
+
+        /*Decrease time left for RRSlices*/
+        for(int j=0; j<cpu->coreCount; j++){
+            if(algorithms[0]->type == RR && cpu->cores[j]->state == NOTIDLE){
+                timesliceLeft[j]--;
+            }
         }
+
+        InterruptHandlerFinished = false;
+        if(IOFinished == true){
+            IOFinished = false;
+            InterruptHandlerFinished = true;
+        }
+        InterruptPID = 0;
+        time++;
     }
 
     freeComputer(computer);
