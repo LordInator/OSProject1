@@ -119,6 +119,10 @@ void reduceReadyQueueSJF(Scheduler *scheduler, int index){
     scheduler->IndexReady--;
 }
 
+int getIndexReady(Scheduler *scheduler){
+    return scheduler->IndexReady;
+}
+
 int getWaitQueueCount(void)
 {
     return NB_WAIT_QUEUES;
@@ -179,9 +183,11 @@ void FCFSff(Computer *computer, int switchindelay[], int switchoutdelay[], int I
         }
     }
 
+    //printf("count %d \n", computer->scheduler->IndexReady);
     for(int i=0; i<computer->cpu->coreCount; i++){
     /*Core 0 idle && atleast 1 process in readyQueue*/
         if(computer->cpu->cores[i]->state == IDLE && computer->scheduler->IndexReady > 0){
+            //printf("delays : %d & %d  && index %d \n", switchindelay[i], switchoutdelay[i], i);
             /*Skip for switch-in delay*/
             if(switchindelay[i] == 0 && switchoutdelay[i] == 0){
                 //printf("comp : %d \n", computer->scheduler->readyQueue[0]->pid);

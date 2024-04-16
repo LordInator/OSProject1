@@ -23,6 +23,7 @@ void AddWaitQueue(Scheduler *scheduler, PCB *process);
 bool alreadyReadyQueue(Scheduler *scheduler, PCB* process);
 void AddReadyQueue(Scheduler *schedule, PCB* process);
 int getWaitQueueCount(void);
+int getIndexReady(Scheduler *scheduler);
 void AddFirstReadyQueue(Scheduler *scheduler, PCB* process);
 
 /* -------------------------- init/free functions -------------------------- */

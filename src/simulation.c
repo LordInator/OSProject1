@@ -447,6 +447,7 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
     bool InterruptHandlerFinished = false;
     int SwinDelayCount[workload->nbProcesses];
     int SwOutDelayCount[workload->nbProcesses];
+    int processLeft;
 
     for(int i=0; i<cpu->coreCount; i++){
         timesliceLeft[i] = algorithms[0]->RRSliceLimit;
@@ -465,11 +466,10 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
     while(time <= maxTime){
         /*Handle Events // Events Happens*/
         for (int i = 0; i < workload->nbProcesses; i++){
-            //printf("time: %d && wait: %d \n", time, getProcessStats(stats, workload->processesInfo[i]->pcb->pid)->waitingTime);
             /*Check for nextEvent (CPU_BURST OR IO_BURST)*/
             if(workload->processesInfo[i]->nextEvent != NULL){ 
                 /*NextEvent == CPU*/
-                if(workload->processesInfo[i]->nextEvent->type == CPU_BURST && workload->processesInfo[i]->nextEvent->time+1 == time){
+                if(workload->processesInfo[i]->nextEvent->type == CPU_BURST && workload->processesInfo[i]->nextEvent->time <= time && workload->processesInfo[i]->startTime == time){
                     
                     /*IO Interrupt is finished, InterruptHandler will be put on Core 0 & Disk will be set to idle*/
                     if(disk->isIdle == false){
@@ -487,7 +487,7 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
                     }
 
                 /*NextEvent == IO*/
-                }else if(workload->processesInfo[i]->nextEvent->type == IO_BURST && workload->processesInfo[i]->nextEvent->time+1 == time){
+                }else if(workload->processesInfo[i]->nextEvent->type == IO_BURST && workload->processesInfo[i]->nextEvent->time == time){
                     InterruptPID = workload->processesInfo[i]->pcb->pid;
                     switchoutDelay[CoreWithPID(computer, InterruptPID)] = 2;
                     switchinDelay[CoreWithPID(computer, InterruptPID)] = 1;
@@ -536,6 +536,7 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
             }
         }
 
+        //printf("time %d \n", time);
         if(IOFinished == true)
             InterruptHandler(computer);
         else{
@@ -596,10 +597,14 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
         /*Advance time of process in core and of simultion*/
         /*Context Switch Delays*/
 
+        processLeft = getIndexReady(scheduler);
         if(IOFinished == false){
             for(int k=0; k<cpu->coreCount; k++){
                 if(switchinDelay[k] != 0 && switchoutDelay[k] == 0){
-                    switchinDelay[k]--;
+                    if(processLeft > 0){
+                        switchinDelay[k]--;
+                        processLeft--;
+                    }
                 }
                 if(switchoutDelay[k] != 0){
                     switchoutDelay[k]--;
@@ -630,7 +635,6 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
         if(IOFinished == true){
             IOFinished = false;
             InterruptHandlerFinished = true;
-
         }
         InterruptPID = 0;
         time++;
