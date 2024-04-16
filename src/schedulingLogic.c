@@ -84,19 +84,12 @@ bool alreadyReadyQueue(Scheduler *scheduler, PCB* process){
 }
 
 void AddFirstReadyQueue(Scheduler *scheduler, PCB* process){
-    for(int i = 0; i < scheduler->IndexReady; i++){
-        printf("ReadyQueue : %d \n", scheduler->readyQueue[i]->pid);
-    }
     process->state = READY;
     for(int i = scheduler->IndexReady; i > 0; i--){
         scheduler->readyQueue[i] = scheduler->readyQueue[i-1];
     }
     scheduler->readyQueue[0] = process;
     scheduler->IndexReady++;
-
-    for(int i = 0; i < scheduler->IndexReady; i++){
-        printf("ReadyQueue : %d \n", scheduler->readyQueue[i]->pid);
-    }
 }
 
 void AddReadyQueue(Scheduler *schedule, PCB* process){

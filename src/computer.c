@@ -98,6 +98,8 @@ void freeDisk(Disk *disk)
 
 void InterruptHandler(Computer *computer){
     computer->disk->isIdle = true;
-    if(computer->cpu->cores[0]->state == NOTIDLE)
+    if(computer->cpu->cores[0]->state == NOTIDLE){
         AddFirstReadyQueue(computer->scheduler, computer->cpu->cores[0]->process);
+    }
+    computer->cpu->cores[0]->state = IDLE;
 }
