@@ -432,11 +432,12 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
     qsort(workload->processesInfo, workload->nbProcesses, sizeof(ProcessSimulationInfo *), compareProcessStartTime);
 
     for (int i = 0; i < workload->nbProcesses; i++){
-        getProcessStats(stats, workload->processesInfo[i]->pcb->pid)->arrivalTime = workload->processesInfo[i]->nextEvent->time;
-        getProcessStats(stats, workload->processesInfo[i]->pcb->pid)->waitingTime--;
+        //workload->processesInfo[i]->startTime = workload->processesInfo[i]->nextEvent->time;
+        getProcessStats(stats, workload->processesInfo[i]->pcb->pid)->arrivalTime = workload->processesInfo[i]->startTime;
     }
 
     int time = 0;
+    int maxTime = 50;
     int switchinDelay[cpu->coreCount];
     int switchoutDelay[cpu->coreCount];
     int PIDonDisk = 0;
@@ -444,22 +445,32 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
     int InterruptPID = 0;
     bool IOFinished = false;
     bool InterruptHandlerFinished = false;
+    int SwinDelayCount[workload->nbProcesses];
+    int SwOutDelayCount[workload->nbProcesses];
 
     for(int i=0; i<cpu->coreCount; i++){
         timesliceLeft[i] = algorithms[0]->RRSliceLimit;
-        switchinDelay[i] = 0;
+        switchinDelay[i] = 1;
         switchoutDelay[i] = 0;
     }
-    
-    while(time<=50){
+
+    for(int i = 0; i < workload->nbProcesses; i++){
+        SwinDelayCount[i] = 1;
+        SwOutDelayCount[i] = 0;
+    }
+
+    if(algorithms[0]->executiontTimeLimit != -1)
+        maxTime = algorithms[0]->executiontTimeLimit;
+
+    while(time <= maxTime){
         /*Handle Events // Events Happens*/
         for (int i = 0; i < workload->nbProcesses; i++){
-
+            //printf("time: %d && wait: %d \n", time, getProcessStats(stats, workload->processesInfo[i]->pcb->pid)->waitingTime);
             /*Check for nextEvent (CPU_BURST OR IO_BURST)*/
             if(workload->processesInfo[i]->nextEvent != NULL){ 
                 /*NextEvent == CPU*/
                 if(workload->processesInfo[i]->nextEvent->type == CPU_BURST && workload->processesInfo[i]->nextEvent->time+1 == time){
-
+                    
                     /*IO Interrupt is finished, InterruptHandler will be put on Core 0 & Disk will be set to idle*/
                     if(disk->isIdle == false){
                         IOFinished = true;
@@ -492,21 +503,27 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
                 for(int j=0; j<cpu->coreCount; j++){
                     /*Check that any core is running*/
                     if(cpu->cores[j]->state == NOTIDLE){
-
                         /*CPU on core advacned enough -> process is terminated*/
                         if(getProcessAdvancementTime(workload, cpu->cores[j]->process->pid) >= getProcessDuration(workload, cpu->cores[j]->process->pid)){    
                             workload->processesInfo[getProcessIndex(workload, cpu->cores[j]->process->pid)]->pcb->state = TERMINATED;
                             cpu->cores[j]->state = IDLE;
                             switchinDelay[j] = 1;
+                            switchoutDelay[j] = 0;
                             timesliceLeft[j] = algorithms[0]->RRSliceLimit;
 
                             getProcessStats(stats, cpu->cores[j]->process->pid)->finishTime = time;
-                            getProcessStats(stats, cpu->cores[j]->process->pid)->turnaroundTime = time;
-                            getProcessStats(stats, cpu->cores[j]->process->pid)->meanResponseTime = getProcessStats(stats, cpu->cores[j]->process->pid)->waitingTime/(getProcessStats(stats, cpu->cores[j]->process->pid)->nbContextSwitches + 1);
+                            getProcessStats(stats, cpu->cores[j]->process->pid)->turnaroundTime = time - getProcessStats(stats, cpu->cores[j]->process->pid)->arrivalTime;
+
+                            getProcessStats(stats, cpu->cores[j]->process->pid)->waitingTime -= SwinDelayCount[cpu->cores[j]->process->pid -1];
+                            getProcessStats(stats, cpu->cores[j]->process->pid)->waitingTime -= SwOutDelayCount[cpu->cores[j]->process->pid -1];
+                            getProcessStats(stats, cpu->cores[j]->process->pid)->meanResponseTime = (getProcessStats(stats, cpu->cores[j]->process->pid)->waitingTime)/(getProcessStats(stats, cpu->cores[j]->process->pid)->nbContextSwitches + 1);
                         }
                         /*CPU on core has spend enough time on core -> switchout (RR slice time)*/
                         if(timesliceLeft[j] == 0 && cpu->cores[j]->process->pid == workload->processesInfo[i]->pcb->pid){
                             if(lastProcess(scheduler) == false){
+                                getProcessStats(stats, cpu->cores[j]->process->pid)->nbContextSwitches++;
+                                SwinDelayCount[workload->processesInfo[i]->pcb->pid -1]++;
+                                SwOutDelayCount[workload->processesInfo[i]->pcb->pid -1]+=2;
                                 AddReadyQueue(scheduler, workload->processesInfo[i]->pcb);
                                 cpu->cores[j]->state = IDLE;
                                 switchinDelay[j] = 1;
@@ -544,9 +561,11 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
         /*Handle Graphs*/
         for(int i=0; i<workload->nbProcesses; i++){
             switch(workload->processesInfo[i]->pcb->state){
-                case READY: 
-                    addProcessEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, READY, NO_CORE);
-                    getProcessStats(stats, workload->processesInfo[i]->pcb->pid)->waitingTime++;
+                case READY:
+                    if(workload->processesInfo[i]->startTime <= time){
+                        addProcessEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, READY, NO_CORE);
+                        getProcessStats(stats, workload->processesInfo[i]->pcb->pid)->waitingTime++;
+                    }
                     //if(workload->processesInfo[i]->pcb->pid == PIDonDisk){
                     //    addDiskEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, DISK_IDLE);
                     //    PIDonDisk = 0;
@@ -558,10 +577,6 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
                     break;
                 case WAITING:
                     addProcessEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, WAITING, NO_CORE);
-                    if(disk->isIdle == false)
-                        addDiskEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, DISK_RUNNING);
-                    else 
-                        addDiskEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, DISK_IDLE);
                     getProcessStats(stats, workload->processesInfo[i]->pcb->pid)->waitingTime++;
                     //PIDonDisk = workload->processesInfo[i]->pcb->pid;
                     break;
@@ -569,17 +584,26 @@ void launchSimulation(Workload *workload, SchedulingAlgorithm **algorithms, int 
                     addProcessEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, TERMINATED, NO_CORE);
                     break;
             }
+            if(disk->isIdle == false)
+                addDiskEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, DISK_RUNNING);
+            else 
+                addDiskEventToGraph(graph, workload->processesInfo[i]->pcb->pid, time, DISK_IDLE);
         }
 
+        if(workloadOver(workload))
+            break;
 
         /*Advance time of process in core and of simultion*/
         /*Context Switch Delays*/
+
         if(IOFinished == false){
             for(int k=0; k<cpu->coreCount; k++){
-                if(switchinDelay[k] != 0 && switchoutDelay[k] == 0)
+                if(switchinDelay[k] != 0 && switchoutDelay[k] == 0){
                     switchinDelay[k]--;
-                if(switchoutDelay[k] != 0)
+                }
+                if(switchoutDelay[k] != 0){
                     switchoutDelay[k]--;
+                }
             }
         }
 
